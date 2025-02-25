@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<types>
+    <type name="ACOGOptic">
+        <nominal>100</nominal>
+        <lifetime>14400</lifetime>
+        <restock>1800</restock>
+        <min>6</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+    </type>
+    <type name="ACOGOptic_6x">
+        <nominal>5</nominal>
+        <lifetime>14400</lifetime>
+        <restock>1800</restock>
+        <min>2</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+    </type>
+    <type name="AK101">
+        <nominal>2</nominal>
+        <lifetime>28800</lifetime>
+        <restock>3600</restock>
+        <min>1</min>
+        <quantmin>30</quantmin>
+        <quantmax>80</quantmax>
+        <cost>100</cost>
+    </type>
+    <type name="AK101_Black">
+        <nominal>0</nominal>
+        <lifetime>28800</lifetime>
+        <restock>0</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+    </type>
+    <type name="AK101_Green">
+        <nominal>0</nominal>
+        <lifetime>28800</lifetime>
+        <restock>0</restock>
+        <min>0</min>
+        <quantmin>-1</quantmin>
+        <quantmax>-1</quantmax>
+        <cost>100</cost>
+    </type>
+</types>
