@@ -52,7 +52,6 @@ public class EditorWindow {
             Node node = childNodes.item(i);
             if (node instanceof Element element) {
                 String key = element.getTagName();
-
                 if (element.hasAttributes()) {
                     NamedNodeMap attributes = element.getAttributes();
                     for (int j = 0; j < attributes.getLength(); j++) {
@@ -69,16 +68,18 @@ public class EditorWindow {
             }
         }
 
+        // Добавляем выпадающие списки и кнопки
         editRoot.addRow(rowIndex++, new Label("Category:"), categoryDropdown);
         editRoot.addRow(rowIndex++, new Label("Usage:"), usageDropdown);
         editRoot.addRow(rowIndex++, new Label("Value:"), valueDropdown);
         editRoot.add(saveButton, 0, rowIndex, 2, 1);
-
         saveButton.setOnAction(e -> {
             xmlManager.saveToXmlFile();
             typeListView.getSelectionModel().clearSelection();
             editStage.close();
         });
+
+
 
         Scene editScene = new Scene(scrollPane, 300, 750);
         editStage.setScene(editScene);

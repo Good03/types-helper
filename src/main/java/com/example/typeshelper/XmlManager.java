@@ -56,6 +56,26 @@ public class XmlManager {
         }
     }
 
+    public void deleteElement(String name) {
+        try {
+            NodeList typeNodes = xmlDocument.getElementsByTagName("type");
+            for (int i = 0; i < typeNodes.getLength(); i++) {
+                Element typeElement = (Element) typeNodes.item(i);
+                String typeName = typeElement.getAttribute("name");
+                if (typeName.equals(name)) {
+                    Node parent = typeElement.getParentNode();
+                    if (parent != null) {
+                        parent.removeChild(typeElement);
+                    }
+                    break;
+                }
+            }
+            saveToXmlFile();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public Map<String, Element> getTypeElements() {
         return typeElements;
     }

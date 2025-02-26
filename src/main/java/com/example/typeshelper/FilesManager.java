@@ -31,29 +31,21 @@ public class FilesManager {
         }
         return new ArrayList<>();
     }
+
     private List<String> loadFile(String fileName, String defaultContent) throws IOException {
         List<String> items;
         File directory = new File("data");
-
-        // Создаем директорию, если она не существует
         if (!directory.exists()) {
             directory.mkdirs();
         }
-
         File file = new File("data\\" + fileName);
-
-        // Если файл не существует, создаем его и записываем дефолтные значения
         if (!file.exists()) {
             file.createNewFile();
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
                 writer.write(defaultContent);
             }
         }
-
-        // Чтение данных из файла
         items = readFromFile(file);
         return items;
     }
-
-
 }
