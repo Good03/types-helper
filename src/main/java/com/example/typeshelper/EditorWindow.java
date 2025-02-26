@@ -21,18 +21,18 @@ public class EditorWindow {
     private final ComboBox<String> usageDropdown = new ComboBox<>();
     private final ComboBox<String> valueDropdown = new ComboBox<>();
     private final Button saveButton = new Button("Save");
-    private final FilesManager filesManager = new FilesManager();
 
     public EditorWindow(XmlManager xmlManager, ListView<String> typeListView) throws IOException {
         this.xmlManager = xmlManager;
         this.typeListView = typeListView;
+        FilesManager filesManager = new FilesManager();
         valueDropdown.getItems().addAll(filesManager.loadValues());
         categoryDropdown.getItems().addAll(filesManager.loadCategories());
         usageDropdown.getItems().addAll(filesManager.loadUsage());
         saveButton.setStyle("-fx-background-color: green; -fx-text-fill: white;");
     }
 
-    public void open(Stage parentStage, Element selectedElement) {
+    public void open(Stage stage, Element selectedElement) {
         Stage editStage = new Stage();
         editStage.setOnCloseRequest(e -> typeListView.getSelectionModel().clearSelection());
 

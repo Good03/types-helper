@@ -59,9 +59,4 @@ public class XmlManager {
     public Map<String, Element> getTypeElements() {
         return typeElements;
     }
-
-    public Element getElementByTagName(Element parentElement, String tagName) {
-        NodeList nodeList = parentElement.getElementsByTagName(tagName);
-        return (nodeList.getLength() > 0) ? (Element) nodeList.item(0) : null;
-    }
 }
