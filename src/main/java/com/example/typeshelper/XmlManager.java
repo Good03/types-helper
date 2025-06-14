@@ -76,6 +76,22 @@ public class XmlManager {
         }
     }
 
+    public void refreshTypeElements() {
+        typeElements.clear();
+        NodeList typeNodes = xmlDocument.getElementsByTagName("type");
+        for (int i = 0; i < typeNodes.getLength(); i++) {
+            Element typeElement = (Element) typeNodes.item(i);
+            String name = typeElement.getAttribute("name");
+            if (!name.isEmpty()) {
+                typeElements.put(name, typeElement);
+            }
+        }
+    }
+    public Document getXmlDocument() {
+        return xmlDocument;
+    }
+
+
     public Map<String, Element> getTypeElements() {
         return typeElements;
     }
