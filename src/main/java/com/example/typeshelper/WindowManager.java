@@ -1,11 +1,13 @@
 package com.example.typeshelper;
 
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import org.w3c.dom.Element;
 import org.w3c.dom.NamedNodeMap;
@@ -21,7 +23,7 @@ import org.w3c.dom.*;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class EditorWindow {
+public class WindowManager {
     private final XmlManager xmlManager;
     private final ListView<String> typeListView;
     private final ComboBox<String> categoryDropdown = new ComboBox<>();
@@ -30,15 +32,16 @@ public class EditorWindow {
     private final Button saveButton = new Button("Save");
     private final Map<Element, TextField> elementTextFields = new HashMap<>();
     private final Map<Attr, TextField> attributeTextFields = new HashMap<>();
+    private final ObservableList<String> masterData;
 
-    public EditorWindow(XmlManager xmlManager, ListView<String> typeListView) throws IOException {
+    public WindowManager(XmlManager xmlManager, ListView<String> typeListView, ObservableList<String> masterData) throws IOException {
         this.xmlManager = xmlManager;
         this.typeListView = typeListView;
+        this.masterData = masterData;
         FilesManager filesManager = new FilesManager();
         valueDropdown.getItems().addAll(filesManager.loadValues());
         categoryDropdown.getItems().addAll(filesManager.loadCategories());
         usageDropdown.getItems().addAll(filesManager.loadUsage());
-
         saveButton.setStyle("-fx-background-color: green; -fx-text-fill: white;");
     }
 
@@ -63,6 +66,161 @@ public class EditorWindow {
         editStage.show();
     }
 
+    public void openNewTypeWindow(Stage stage) {
+        Stage newTypeStage = new Stage();
+        newTypeStage.setTitle("Add New Type");
+
+        GridPane root = new GridPane();
+        root.setPadding(new Insets(10));
+        root.setHgap(10);
+        root.setVgap(5);
+
+        ScrollPane scrollPane = new ScrollPane(root);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefHeight(500);
+
+        int[] rowIndex = {0};
+
+        TextField nameField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("Type name:"), nameField);
+        TextField nominalField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("Nominal:"), nominalField);
+        TextField lifetimeField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("Lifetime:"), lifetimeField);
+        TextField restockField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("Restock:"), restockField);
+        TextField quantMinField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("QuantMin:"), quantMinField);
+        TextField quantMaxField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("QuantMax:"), quantMaxField);
+        TextField costField = new TextField();
+        root.addRow(rowIndex[0]++, new Label("Cost:"), costField);
+
+        CheckBox countInCargo = new CheckBox("count_in_cargo");
+        CheckBox countInHoarder = new CheckBox("count_in_hoarder");
+        CheckBox countInMap = new CheckBox("count_in_map");
+        CheckBox countInPlayer = new CheckBox("count_in_player");
+        CheckBox crafted = new CheckBox("crafted");
+        CheckBox deloot = new CheckBox("deloot");
+
+        VBox flagsBox = new VBox(5,
+                new Label("Flags:"),
+                countInCargo,
+                countInHoarder,
+                countInMap,
+                countInPlayer,
+                crafted,
+                deloot
+        );
+
+        root.add(flagsBox, 0, rowIndex[0]++, 2, 1);
+
+        ComboBox<String> categoryBox = new ComboBox<>();
+        categoryBox.getItems().addAll(categoryDropdown.getItems());
+        categoryBox.setEditable(true);
+        root.addRow(rowIndex[0]++, new Label("Category:"), categoryBox);
+
+        List<ComboBox<String>> usageFields = new ArrayList<>();
+        VBox usageBox = new VBox(5);
+        Button addUsageBtn = new Button("Add Usage");
+        addUsageBtn.setOnAction(e -> {
+            ComboBox<String> combo = new ComboBox<>();
+            combo.getItems().addAll(usageDropdown.getItems());
+            combo.setEditable(true);
+            usageFields.add(combo);
+            usageBox.getChildren().add(combo);
+        });
+        root.add(new Label("Usages:"), 0, rowIndex[0]);
+        root.add(new VBox(5, usageBox, addUsageBtn), 1, rowIndex[0]++);
+
+        List<ComboBox<String>> valueFields = new ArrayList<>();
+        VBox valueBox = new VBox(5);
+        Button addValueBtn = new Button("Add Value");
+        addValueBtn.setOnAction(e -> {
+            ComboBox<String> combo = new ComboBox<>();
+            combo.getItems().addAll(valueDropdown.getItems());
+            combo.setEditable(true);
+            valueFields.add(combo);
+            valueBox.getChildren().add(combo);
+        });
+        root.add(new Label("Values:"), 0, rowIndex[0]);
+        root.add(new VBox(5, valueBox, addValueBtn), 1, rowIndex[0]++);
+
+        Button saveBtn = new Button("Save");
+        saveBtn.setStyle("-fx-background-color: green; -fx-text-fill: white;");
+        saveBtn.setOnAction(e -> {
+            String typeName = nameField.getText().trim();
+            if (typeName.isEmpty()) return;
+
+            Document doc = xmlManager.getXmlDocument();
+            Element newType = doc.createElement("type");
+            newType.setAttribute("name", typeName);
+
+            addElementWithText(doc, newType, "nominal", nominalField.getText().trim());
+            addElementWithText(doc, newType, "lifetime", lifetimeField.getText().trim());
+            addElementWithText(doc, newType, "restock", restockField.getText().trim());
+            addElementWithText(doc, newType, "min", quantMinField.getText().trim());
+            addElementWithText(doc, newType, "quantmin", quantMinField.getText().trim());
+            addElementWithText(doc, newType, "quantmax", quantMaxField.getText().trim());
+            addElementWithText(doc, newType, "cost", costField.getText().trim());
+            Element flagsEl = doc.createElement("flags");
+            flagsEl.setAttribute("count_in_cargo", countInCargo.isSelected() ? "1" : "0");
+            flagsEl.setAttribute("count_in_hoarder", countInHoarder.isSelected() ? "1" : "0");
+            flagsEl.setAttribute("count_in_map", countInMap.isSelected() ? "1" : "0");
+            flagsEl.setAttribute("count_in_player", countInPlayer.isSelected() ? "1" : "0");
+            flagsEl.setAttribute("crafted", crafted.isSelected() ? "1" : "0");
+            flagsEl.setAttribute("deloot", deloot.isSelected() ? "1" : "0");
+            newType.appendChild(flagsEl);
+            String category = categoryBox.getEditor().getText().trim();
+            if (!category.isEmpty()) {
+                Element catEl = doc.createElement("category");
+                catEl.setAttribute("name", category);
+                newType.appendChild(catEl);
+            }
+
+            for (ComboBox<String> usageField : usageFields) {
+                String usage = usageField.getEditor().getText().trim();
+                if (!usage.isEmpty()) {
+                    Element usageEl = doc.createElement("usage");
+                    usageEl.setAttribute("name", usage);
+                    newType.appendChild(usageEl);
+                }
+            }
+
+            for (ComboBox<String> valueField : valueFields) {
+                String value = valueField.getEditor().getText().trim();
+                if (!value.isEmpty()) {
+                    Element valEl = doc.createElement("value");
+                    valEl.setAttribute("name", value);
+                    newType.appendChild(valEl);
+                }
+            }
+
+            Node typesNode = doc.getElementsByTagName("types").item(0);
+            typesNode.appendChild(newType);
+
+            xmlManager.saveToXmlFile();
+            xmlManager.refreshTypeElements();
+
+            masterData.add(typeName);
+            newTypeStage.close();
+        });
+
+        root.add(saveBtn, 0, rowIndex[0]++, 2, 1);
+        saveBtn.setMaxWidth(Double.MAX_VALUE);
+
+        newTypeStage.setScene(new Scene(scrollPane, 400, 600));
+        newTypeStage.show();
+    }
+
+    private void addElementWithText(Document doc, Element parent, String tagName, String textContent) {
+        if (textContent != null && !textContent.isEmpty()) {
+            Element el = doc.createElement(tagName);
+            el.setTextContent(textContent);
+            parent.appendChild(el);
+        }
+    }
+
     private void populateEditorFields(GridPane editRoot, Element selectedElement, Stage editStage) {
         editRoot.getChildren().clear();
         elementTextFields.clear();
@@ -84,6 +242,7 @@ public class EditorWindow {
         renderValueAdditionUI(editRoot, selectedElement, editStage, rowIndex);
         renderSaveAndCloseButtons(editRoot, selectedElement, editStage, rowIndex);
     }
+
     private void renderRemovableElement(GridPane grid, Element parent, Stage stage, Element child, String key, int[] rowIndex) {
         String name = child.getAttribute("name");
         Label label = new Label(key + ": " + name);
@@ -142,6 +301,7 @@ public class EditorWindow {
         box.setAlignment(Pos.CENTER_LEFT);
         grid.add(box, 0, rowIndex[0]++, 2, 1);
     }
+
     private void renderElementWithAttributesOrText(GridPane grid, Element element, String key, int[] rowIndex) {
         if (element.hasAttributes()) {
             NamedNodeMap attrs = element.getAttributes();
@@ -233,8 +393,6 @@ public class EditorWindow {
 
         grid.add(buttonBox, 0, rowIndex[0]++, 2, 1);
     }
-
-
 
     private Stream<Node> stream(NodeList nodeList) {
         return IntStream.range(0, nodeList.getLength())
