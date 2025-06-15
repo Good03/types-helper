@@ -26,7 +26,9 @@ public class TypesHelper extends Application {
     private final TextField searchField = new TextField();
     private final Button addNewTypeButton = new Button("Add New Type");
     private final XmlManager xmlManager = new XmlManager();
-    private final EditorWindow editorWindow = new EditorWindow(xmlManager, typeListView);
+    private final ObservableList<String> masterData = FXCollections.observableArrayList();
+    private final WindowManager windowManager = new WindowManager(xmlManager, typeListView, masterData);
+
 
 
 
@@ -42,7 +44,6 @@ public class TypesHelper extends Application {
 
         Scene scene = new Scene(root, 600, 400);
 
-        ObservableList<String> masterData = FXCollections.observableArrayList();
         FilteredList<String> filteredData = new FilteredList<>(masterData, p -> true);
         typeListView.setItems(filteredData);
 
@@ -86,7 +87,7 @@ public class TypesHelper extends Application {
 
         typeListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
-                editorWindow.open(stage, xmlManager.getTypeElements().get(newValue));
+                windowManager.open(stage, xmlManager.getTypeElements().get(newValue));
             }
         });
 
@@ -105,7 +106,7 @@ public class TypesHelper extends Application {
             masterData.setAll(xmlManager.getTypeElements().keySet());
             VBox root = (VBox) stage.getScene().getRoot();
             if (!root.getChildren().contains(addNewTypeButton)) {
-                addNewTypeButton.setOnAction(e -> editorWindow.open(stage, xmlManager.getTypeElements().get(masterData.get(0))));
+                addNewTypeButton.setOnAction(e -> windowManager.openNewTypeWindow(stage));
                 root.getChildren().add(addNewTypeButton);
             }
         }
