@@ -1,119 +1,238 @@
 package com.example.typeshelper;
 
-import javafx.application.Application;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.collections.transformation.FilteredList;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.VBox;
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import javafx.scene.layout.Priority;
+import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import java.awt.*;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 
-import java.io.File;
-import java.io.IOException;
+public class TypesHelper extends JFrame {
 
+    private final JTextField searchField = new JTextField();
+    private final JButton addNewTypeButton = new JButton("Add New Type");
 
-public class TypesHelper extends Application {
-    private final ListView<String> typeListView = new ListView<>();
-    private final Button loadFileButton = new Button("Load XML File");
-    private final TextField searchField = new TextField();
-    private final Button addNewTypeButton = new Button("Add New Type");
+    private List<String> currentExclusions = List.of(
+            "_ColorBase", "_Base", "_SoundShader", "_SoundSet", "_Buttstock_ (приклад)", "_Hndgrd_ (рукоять)",
+            "_Bipod_ (сошки)", "_Bttstck_ (приклад)", "_Buttstock (приклад)", "_Hndgrd (рукоять)", "_Bipod (сошки)", "_Bttstck (приклад)",
+            "_Bttstk", "_Flashlight", "_Grip", "_Optic", "_PistolGrip", "_Supp",
+            "_Suppressor (глушитель)", "_VerticalGrip (вертикальная рукоять)", "_RailAK (рукоять АК)", "_Muzzle_AK_", "_ReceiverCover_",
+            "_base", "_Adapter", "_Ammo", "Bttstck"
+    );
+
+    private final DefaultListModel<String> listModel = new DefaultListModel<>();
+    private final JList<String> typeList = new JList<>(listModel);
+
     private final XmlManager xmlManager = new XmlManager();
-    private final ObservableList<String> masterData = FXCollections.observableArrayList();
-    private final WindowManager windowManager = new WindowManager(xmlManager, typeListView, masterData);
+    private final WindowManager windowManager;
 
-
-
+    private List<String> fullDataList = List.of();
 
     public TypesHelper() throws IOException {
-    }
+        super("Types Helper");
 
-    @Override
-    public void start(Stage stage) {
-        VBox root = new VBox(10, loadFileButton, searchField, typeListView);
-        root.setAlignment(Pos.CENTER);
-        root.setPadding(new Insets(10));
-        root.setStyle("-fx-background-color: #36454F;");
+        windowManager = new WindowManager(xmlManager, typeList, listModel);
 
-        Scene scene = new Scene(root, 600, 400);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setSize(600, 400);
+        setLocationRelativeTo(null);
+        setLayout(new BorderLayout());
 
-        FilteredList<String> filteredData = new FilteredList<>(masterData, p -> true);
-        typeListView.setItems(filteredData);
+        JPanel topPanel = new JPanel(new BorderLayout(5, 5));
+        topPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JButton loadFileButton = new JButton("Load XML File");
+        topPanel.add(loadFileButton, BorderLayout.WEST);
+        PromptSupport.setPrompt("Search...", searchField);
+        topPanel.add(searchField, BorderLayout.CENTER);
 
-        loadFileButton.setOnAction(event -> openFileChooser(stage, masterData));
+        JScrollPane scrollPane = new JScrollPane(typeList);
 
-        searchField.setPromptText("Search by classname...");
-        searchField.textProperty().addListener((obs, oldValue, newValue) -> {
-            final String filter = newValue.toLowerCase();
-            filteredData.setPredicate(item -> {
-                if (filter.isEmpty()) return true;
-                return item.toLowerCase().contains(filter);
-            });
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
+
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        bottomPanel.add(addNewTypeButton);
+        JButton extractAllClassnamesButton = new JButton("Extract All Classnames");
+        bottomPanel.add(extractAllClassnamesButton);
+        JButton exclusionSettingsButton = new JButton("Filters");
+        bottomPanel.add(exclusionSettingsButton);
+
+        exclusionSettingsButton.setVisible(true);
+        addNewTypeButton.setVisible(false);
+        extractAllClassnamesButton.setVisible(true);
+
+        add(topPanel, BorderLayout.NORTH);
+        add(centerPanel, BorderLayout.CENTER);
+        add(bottomPanel, BorderLayout.SOUTH);
+
+        loadFileButton.addActionListener(e -> openFileChooser());
+        extractAllClassnamesButton.addActionListener(e -> openDirChooserAndExtract());
+
+        exclusionSettingsButton.addActionListener(e -> {
+            ExclusionSettingsDialog dialog = new ExclusionSettingsDialog(this, currentExclusions);
+            dialog.setVisible(true);
+            if (dialog.isConfirmed()) {
+                currentExclusions = dialog.getSelectedExclusions();
+                System.out.println("Selected exclusions: " + currentExclusions);
+            }
         });
 
-        typeListView.setCellFactory(param -> new ListCell<>() {
-            private final Button deleteButton = new Button("Delete");
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            public void insertUpdate(DocumentEvent e) {
+                filterList();
+            }
 
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                } else {
-                    HBox hbox = new HBox(10);
-                    hbox.setAlignment(Pos.CENTER_LEFT);
-                    Label label = new Label(item);
-                    Region spacer = new Region();
-                    HBox.setHgrow(spacer, Priority.ALWAYS);
-                    hbox.getChildren().addAll(label, spacer, deleteButton);
-                    deleteButton.setOnAction(e -> {
-                        xmlManager.deleteElement(item);
-                        masterData.remove(item);
-                    });
+            public void removeUpdate(DocumentEvent e) {
+                filterList();
+            }
 
-                    setText(null);
-                    setGraphic(hbox);
+            public void changedUpdate(DocumentEvent e) {
+                filterList();
+            }
+        });
+
+        typeList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        typeList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                String selected = typeList.getSelectedValue();
+                if (selected != null) {
+                    windowManager.openEditor(selected);
                 }
             }
         });
 
-        typeListView.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue != null) {
-                windowManager.open(stage, xmlManager.getTypeElements().get(newValue));
-            }
-        });
-
-        stage.setScene(scene);
-        stage.setTitle("Types Helper");
-        stage.show();
+        addNewTypeButton.addActionListener(e -> windowManager.openNewTypeDialog(this));
     }
 
-    private void openFileChooser(Stage stage, ObservableList<String> masterData) {
-        FileChooser fileChooser = new FileChooser();
-        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("XML Files", "*.xml"));
-        File file = fileChooser.showOpenDialog(stage);
+    private void openFileChooser() {
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("XML files", "xml"));
+        int result = fileChooser.showOpenDialog(this);
 
-        if (file != null) {
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
             xmlManager.loadXmlData(file);
-            masterData.setAll(xmlManager.getTypeElements().keySet());
-            VBox root = (VBox) stage.getScene().getRoot();
-            if (!root.getChildren().contains(addNewTypeButton)) {
-                addNewTypeButton.setOnAction(e -> windowManager.openNewTypeWindow(stage));
-                root.getChildren().add(addNewTypeButton);
+            fullDataList = List.copyOf(xmlManager.getTypeElements().keySet());
+            updateList(fullDataList);
+            addNewTypeButton.setVisible(true);
+        }
+    }
+
+    private void openDirChooserAndExtract() {
+        JFileChooser dirChooser = new JFileChooser();
+        dirChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        int result = dirChooser.showOpenDialog(this);
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedDir = dirChooser.getSelectedFile();
+            System.out.println("Dir selected: " + selectedDir.getAbsolutePath());
+
+            extractClassNamesFromDir(selectedDir);
+        }
+    }
+
+    private void extractClassNamesFromDir(File rootDir) {
+        List<File> cppFiles = new ArrayList<>();
+        findFilesWithExtension(rootDir, ".cpp", cppFiles);
+
+        String[] prefixes = {"IMP_", "KOD_", "Vp_", "SC_", "sk_", "SM_", "VP_", "SR_", "MOD_", "CTS_", "TG_", "FZ_", "kr_", "Fruck_"};
+        Set<String> allClassNames = new LinkedHashSet<>();
+
+        for (File cppFile : cppFiles) {
+            try (BufferedReader reader = new BufferedReader(new FileReader(cppFile))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.startsWith("class ") && line.contains(":")) {
+                        String[] parts = line.split("\\s+");
+                        if (parts.length >= 2) {
+                            String className = parts[1];
+                            int colonIndex = className.indexOf(':');
+                            if (colonIndex != -1) {
+                                className = className.substring(0, colonIndex).trim();
+                            }
+
+                            boolean matchesPrefix = false;
+                            for (String prefix : prefixes) {
+                                if (className.startsWith(prefix)) {
+                                    matchesPrefix = true;
+                                    break;
+                                }
+                            }
+                            if (!matchesPrefix) continue;
+
+                            boolean excluded = false;
+                            for (String excl : currentExclusions) {
+                                if (className.endsWith(excl)) {
+                                    excluded = true;
+                                    break;
+                                }
+                            }
+                            if (excluded) continue;
+
+                            System.out.println("Added: " + className);
+                            allClassNames.add(className);
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        File outFile = new File("classnames.txt");
+        try (PrintWriter writer = new PrintWriter(outFile)) {
+            for (String className : allClassNames) {
+                writer.println(className);
+            }
+            JOptionPane.showMessageDialog(this, "Classnames were saved in:\n" + outFile.getAbsolutePath());
+        } catch (IOException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Errer while saving file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void findFilesWithExtension(File dir, String extension, List<File> result) {
+        if (dir == null || !dir.isDirectory()) return;
+
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File f : files) {
+            if (f.isDirectory()) {
+                findFilesWithExtension(f, extension, result);
+            } else if (f.isFile() && f.getName().toLowerCase().endsWith(extension.toLowerCase())) {
+                result.add(f);
             }
         }
     }
 
+    private void updateList(List<String> items) {
+        listModel.clear();
+        for (String item : items) {
+            listModel.addElement(item);
+        }
+    }
+
+    private void filterList() {
+        String filter = searchField.getText().toLowerCase();
+        List<String> filtered = fullDataList.stream()
+                .filter(name -> name.toLowerCase().contains(filter))
+                .collect(Collectors.toList());
+        updateList(filtered);
+    }
 
     public static void main(String[] args) {
-        Application.launch(TypesHelper.class, args);
+        SwingUtilities.invokeLater(() -> {
+            try {
+                new TypesHelper().setVisible(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
     }
 }

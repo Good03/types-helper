@@ -1,156 +1,441 @@
 package com.example.typeshelper;
 
-import javafx.collections.ObservableList;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
-import javafx.stage.Stage;
-import org.w3c.dom.Element;
-import org.w3c.dom.NamedNodeMap;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-
-import java.io.IOException;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
 import java.util.*;
-
+import java.util.List;
 import org.w3c.dom.*;
-
-
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
+import java.io.IOException;
 
 public class WindowManager {
     private final XmlManager xmlManager;
-    private final ListView<String> typeListView;
-    private final ComboBox<String> categoryDropdown = new ComboBox<>();
-    private final ComboBox<String> usageDropdown = new ComboBox<>();
-    private final ComboBox<String> valueDropdown = new ComboBox<>();
-    private final Button saveButton = new Button("Save");
-    private final Map<Element, TextField> elementTextFields = new HashMap<>();
-    private final Map<Attr, TextField> attributeTextFields = new HashMap<>();
-    private final ObservableList<String> masterData;
+    private final DefaultListModel<String> listModel;
+    private final List<String> categoryOptions;
+    private final List<String> usageOptions;
+    private final List<String> valueOptions;
 
-    public WindowManager(XmlManager xmlManager, ListView<String> typeListView, ObservableList<String> masterData) throws IOException {
+    public WindowManager(XmlManager xmlManager, JList<String> typeList, DefaultListModel<String> listModel) throws IOException {
         this.xmlManager = xmlManager;
-        this.typeListView = typeListView;
-        this.masterData = masterData;
+        this.listModel = listModel;
         FilesManager filesManager = new FilesManager();
-        valueDropdown.getItems().addAll(filesManager.loadValues());
-        categoryDropdown.getItems().addAll(filesManager.loadCategories());
-        usageDropdown.getItems().addAll(filesManager.loadUsage());
-        saveButton.setStyle("-fx-background-color: green; -fx-text-fill: white;");
+        this.categoryOptions = filesManager.loadCategories();
+        this.usageOptions = filesManager.loadUsage();
+        this.valueOptions = filesManager.loadValues();
     }
 
-    public void open(Stage stage, Element selectedElement) {
-        Stage editStage = new Stage();
-        editStage.setOnCloseRequest(e -> typeListView.getSelectionModel().clearSelection());
+    public void openEditor(String typeName) {
+        Element element = xmlManager.getTypeElements().get(typeName);
+        if (element == null) return;
 
-        GridPane editRoot = new GridPane();
-        editRoot.setPadding(new Insets(10));
-        editRoot.setHgap(10);
-        editRoot.setVgap(5);
+        JDialog dialog = new JDialog((Frame) null, "Edit: " + typeName, true);
+        dialog.setSize(450, 700);
+        dialog.setLocationRelativeTo(null);
 
-        ScrollPane scrollPane = new ScrollPane(editRoot);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setPrefHeight(500);
+        JPanel mainPanel = new JPanel(new GridBagLayout());
+        mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+        gbc.gridy = 0;
 
-        populateEditorFields(editRoot, selectedElement, editStage);
+        Map<Node, JTextField> textFields = new HashMap<>();
 
-        Scene editScene = new Scene(scrollPane, 350, 750);
-        editStage.setScene(editScene);
-        editStage.setTitle(selectedElement.getAttribute("name"));
-        editStage.show();
+        JPanel categoryPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel usagePanel = new JPanel();
+        usagePanel.setLayout(new BoxLayout(usagePanel, BoxLayout.Y_AXIS));
+        JPanel valuePanel = new JPanel();
+        valuePanel.setLayout(new BoxLayout(valuePanel, BoxLayout.Y_AXIS));
+
+
+        Runnable refreshCategoryUI = () -> refreshCategoryUI(element, categoryPanel, dialog);
+        Runnable refreshUsageUI = () -> refreshUsageUI(element, usagePanel, dialog);
+        Runnable refreshValueUI = () -> refreshValueUI(element, valuePanel, dialog);
+
+        NodeList children = element.getChildNodes();
+        int row = 0;
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node instanceof Element child) {
+                String tag = child.getTagName();
+                if (tag.equals("category") || tag.equals("usage") || tag.equals("value")) {
+                    continue;
+                }
+                JLabel label = new JLabel(tag);
+                JTextField field = new JTextField(child.getTextContent());
+                textFields.put(child, field);
+
+                gbc.gridx = 0;
+                gbc.gridy = row;
+                mainPanel.add(label, gbc);
+                gbc.gridx = 1;
+                mainPanel.add(field, gbc);
+                row++;
+            }
+        }
+
+        gbc.gridx = 0;
+        gbc.gridy = row++;
+        gbc.gridwidth = 2;
+        mainPanel.add(categoryPanel, gbc);
+
+        gbc.gridy = row++;
+        mainPanel.add(new JLabel("Usages:"), gbc);
+        gbc.gridy = row++;
+        mainPanel.add(new JScrollPane(usagePanel), gbc);
+
+        gbc.gridy = row++;
+        mainPanel.add(new JLabel("Values:"), gbc);
+        gbc.gridy = row++;
+        mainPanel.add(new JScrollPane(valuePanel), gbc);
+
+        JButton saveButton = new JButton("Save");
+        saveButton.setBackground(Color.GREEN);
+        saveButton.setForeground(Color.WHITE);
+        saveButton.addActionListener(e -> {
+            for (Map.Entry<Node, JTextField> entry : textFields.entrySet()) {
+                entry.getKey().setTextContent(entry.getValue().getText().trim());
+            }
+            xmlManager.saveToXmlFile();
+            xmlManager.refreshTypeElements();
+            dialog.dispose();
+        });
+
+        JButton closeButton = new JButton("Close");
+        closeButton.addActionListener(e -> dialog.dispose());
+
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        buttonsPanel.add(saveButton);
+        buttonsPanel.add(closeButton);
+
+        gbc.gridy = row++;
+        gbc.gridwidth = 2;
+        mainPanel.add(buttonsPanel, gbc);
+
+        dialog.setContentPane(new JScrollPane(mainPanel));
+
+        refreshCategoryUI.run();
+        refreshUsageUI.run();
+        refreshValueUI.run();
+
+        dialog.setVisible(true);
     }
 
-    public void openNewTypeWindow(Stage stage) {
-        Stage newTypeStage = new Stage();
-        newTypeStage.setTitle("Add New Type");
+    private void refreshCategoryUI(Element element, JPanel categoryPanel, JDialog dialog) {
+        categoryPanel.removeAll();
+        NodeList categories = element.getElementsByTagName("category");
+        if (categories.getLength() > 0) {
+            Element catEl = (Element) categories.item(0);
+            JLabel catLabel = new JLabel("Category: " + catEl.getAttribute("name"));
+            JButton editBtn = new JButton("Edit");
+            editBtn.addActionListener(e -> {
+                categoryPanel.removeAll();
 
-        GridPane root = new GridPane();
-        root.setPadding(new Insets(10));
-        root.setHgap(10);
-        root.setVgap(5);
+                JComboBox<String> combo = new JComboBox<>(categoryOptions.toArray(new String[0]));
+                combo.setEditable(true);
+                combo.setSelectedItem(catEl.getAttribute("name"));
 
-        ScrollPane scrollPane = new ScrollPane(root);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setPrefHeight(500);
+                JButton applyBtn = new JButton("Apply");
+                applyBtn.addActionListener(ev -> {
+                    String newCat = ((String) combo.getEditor().getItem()).trim();
+                    if (!newCat.isEmpty()) {
+                        catEl.setAttribute("name", newCat);
+                        xmlManager.saveToXmlFile();
+                        xmlManager.refreshTypeElements();
+                        refreshCategoryUI(element, categoryPanel, dialog);
+                        dialog.revalidate();
+                        dialog.repaint();
+                    }
+                });
 
-        int[] rowIndex = {0};
+                categoryPanel.add(new JLabel("Category: "));
+                categoryPanel.add(combo);
+                categoryPanel.add(applyBtn);
+                categoryPanel.revalidate();
+                categoryPanel.repaint();
+            });
 
-        TextField nameField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("Type name:"), nameField);
-        TextField nominalField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("Nominal:"), nominalField);
-        TextField lifetimeField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("Lifetime:"), lifetimeField);
-        TextField restockField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("Restock:"), restockField);
-        TextField quantMinField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("QuantMin:"), quantMinField);
-        TextField quantMaxField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("QuantMax:"), quantMaxField);
-        TextField costField = new TextField();
-        root.addRow(rowIndex[0]++, new Label("Cost:"), costField);
+            categoryPanel.add(catLabel);
+            categoryPanel.add(editBtn);
+        } else {
+            categoryPanel.add(new JLabel("Category: (none)"));
+        }
+        categoryPanel.revalidate();
+        categoryPanel.repaint();
+    }
 
-        CheckBox countInCargo = new CheckBox("count_in_cargo");
-        CheckBox countInHoarder = new CheckBox("count_in_hoarder");
-        CheckBox countInMap = new CheckBox("count_in_map");
-        CheckBox countInPlayer = new CheckBox("count_in_player");
-        CheckBox crafted = new CheckBox("crafted");
-        CheckBox deloot = new CheckBox("deloot");
+    private void refreshUsageUI(Element element, JPanel usagePanel, JDialog dialog) {
+        usagePanel.removeAll();
 
-        VBox flagsBox = new VBox(5,
-                new Label("Flags:"),
-                countInCargo,
-                countInHoarder,
-                countInMap,
-                countInPlayer,
-                crafted,
-                deloot
-        );
+        NodeList usageNodes = element.getElementsByTagName("usage");
+        for (int i = 0; i < usageNodes.getLength(); i++) {
+            Element usageEl = (Element) usageNodes.item(i);
+            JPanel rowPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
 
-        root.add(flagsBox, 0, rowIndex[0]++, 2, 1);
+            JLabel usageLabel = new JLabel(usageEl.getAttribute("name"));
+            JButton editBtn = new JButton("Edit");
+            JButton delBtn = new JButton("Delete");
 
-        ComboBox<String> categoryBox = new ComboBox<>();
-        categoryBox.getItems().addAll(categoryDropdown.getItems());
+            editBtn.addActionListener(e -> {
+                rowPanel.removeAll();
+                JComboBox<String> combo = new JComboBox<>(usageOptions.toArray(new String[0]));
+                combo.setEditable(true);
+                combo.setSelectedItem(usageEl.getAttribute("name"));
+
+                JButton applyBtn = new JButton("Apply");
+                applyBtn.addActionListener(ev -> {
+                    String newUsage = ((String) combo.getEditor().getItem()).trim();
+                    if (!newUsage.isEmpty()) {
+                        usageEl.setAttribute("name", newUsage);
+                        xmlManager.saveToXmlFile();
+                        xmlManager.refreshTypeElements();
+                        refreshUsageUI(element, usagePanel, dialog);
+                        dialog.revalidate();
+                        dialog.repaint();
+                    }
+                });
+
+                rowPanel.add(combo);
+                rowPanel.add(applyBtn);
+                rowPanel.revalidate();
+                rowPanel.repaint();
+            });
+
+            delBtn.addActionListener(e -> {
+                element.removeChild(usageEl);
+                xmlManager.saveToXmlFile();
+                xmlManager.refreshTypeElements();
+                refreshUsageUI(element, usagePanel, dialog);
+                dialog.revalidate();
+                dialog.repaint();
+            });
+
+            rowPanel.add(usageLabel);
+            rowPanel.add(editBtn);
+            rowPanel.add(delBtn);
+
+            usagePanel.add(rowPanel);
+        }
+
+        JButton addUsageBtn = new JButton("Add Usage");
+        addUsageBtn.addActionListener(e -> {
+            JPanel addPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+            JComboBox<String> combo = new JComboBox<>(usageOptions.toArray(new String[0]));
+            combo.setEditable(true);
+            JButton applyBtn = new JButton("Add");
+            applyBtn.addActionListener(ev -> {
+                String newUsage = ((String) combo.getEditor().getItem()).trim();
+                if (!newUsage.isEmpty()) {
+                    Element newUsageEl = xmlManager.getXmlDocument().createElement("usage");
+                    newUsageEl.setAttribute("name", newUsage);
+                    element.appendChild(newUsageEl);
+                    xmlManager.saveToXmlFile();
+                    xmlManager.refreshTypeElements();
+                    refreshUsageUI(element, usagePanel, dialog);
+                    dialog.revalidate();
+                    dialog.repaint();
+                }
+            });
+            addPanel.add(combo);
+            addPanel.add(applyBtn);
+
+            usagePanel.add(addPanel);
+            usagePanel.revalidate();
+            usagePanel.repaint();
+            addUsageBtn.setEnabled(false);
+        });
+
+        usagePanel.add(addUsageBtn);
+        usagePanel.revalidate();
+        usagePanel.repaint();
+    }
+
+    private void refreshValueUI(Element element, JPanel valuePanel, JDialog dialog) {
+        valuePanel.removeAll();
+
+        NodeList valueNodes = element.getElementsByTagName("value");
+        for (int i = 0; i < valueNodes.getLength(); i++) {
+            Element valueEl = (Element) valueNodes.item(i);
+            JPanel rowPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+
+            JLabel valueLabel = new JLabel(valueEl.getAttribute("name"));
+            JButton editBtn = new JButton("Edit");
+            JButton delBtn = new JButton("Delete");
+
+            editBtn.addActionListener(e -> {
+                rowPanel.removeAll();
+                JComboBox<String> combo = new JComboBox<>(valueOptions.toArray(new String[0]));
+                combo.setEditable(true);
+                combo.setSelectedItem(valueEl.getAttribute("name"));
+
+                JButton applyBtn = new JButton("Apply");
+                applyBtn.addActionListener(ev -> {
+                    String newValue = ((String) combo.getEditor().getItem()).trim();
+                    if (!newValue.isEmpty()) {
+                        valueEl.setAttribute("name", newValue);
+                        xmlManager.saveToXmlFile();
+                        xmlManager.refreshTypeElements();
+                        refreshValueUI(element, valuePanel, dialog);
+                        dialog.revalidate();
+                        dialog.repaint();
+                    }
+                });
+
+                rowPanel.add(combo);
+                rowPanel.add(applyBtn);
+                rowPanel.revalidate();
+                rowPanel.repaint();
+            });
+
+            delBtn.addActionListener(e -> {
+                element.removeChild(valueEl);
+                xmlManager.saveToXmlFile();
+                xmlManager.refreshTypeElements();
+                refreshValueUI(element, valuePanel, dialog);
+                dialog.revalidate();
+                dialog.repaint();
+            });
+
+            rowPanel.add(valueLabel);
+            rowPanel.add(editBtn);
+            rowPanel.add(delBtn);
+
+            valuePanel.add(rowPanel);
+        }
+
+        JButton addValueBtn = new JButton("Add Value");
+        addValueBtn.addActionListener(e -> {
+            JPanel addPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+            JComboBox<String> combo = new JComboBox<>(valueOptions.toArray(new String[0]));
+            combo.setEditable(true);
+            JButton applyBtn = new JButton("Add");
+            applyBtn.addActionListener(ev -> {
+                String newValue = ((String) combo.getEditor().getItem()).trim();
+                if (!newValue.isEmpty()) {
+                    Element newValueEl = xmlManager.getXmlDocument().createElement("value");
+                    newValueEl.setAttribute("name", newValue);
+                    element.appendChild(newValueEl);
+                    xmlManager.saveToXmlFile();
+                    xmlManager.refreshTypeElements();
+                    refreshValueUI(element, valuePanel, dialog);
+                    dialog.revalidate();
+                    dialog.repaint();
+                }
+            });
+            addPanel.add(combo);
+            addPanel.add(applyBtn);
+
+            valuePanel.add(addPanel);
+            valuePanel.revalidate();
+            valuePanel.repaint();
+            addValueBtn.setEnabled(false);
+        });
+
+        valuePanel.add(addValueBtn);
+        valuePanel.revalidate();
+        valuePanel.repaint();
+    }
+
+    public void openNewTypeDialog(JFrame parent) {
+        JDialog dialog = new JDialog(parent, "Add New Type", true);
+        dialog.setSize(450, 650);
+        dialog.setLocationRelativeTo(parent);
+
+        JPanel root = new JPanel(new GridBagLayout());
+        root.setBorder(new EmptyBorder(10, 10, 10, 10));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+
+        int row = 0;
+
+        JTextField nameField = new JTextField();
+        JTextField nominalField = new JTextField();
+        JTextField lifetimeField = new JTextField();
+        JTextField restockField = new JTextField();
+        JTextField quantMinField = new JTextField();
+        JTextField quantMaxField = new JTextField();
+        JTextField costField = new JTextField();
+
+        root.add(new JLabel("Type name:"), gridPos(0, row));
+        root.add(nameField, gridPos(1, row++));
+        root.add(new JLabel("Nominal:"), gridPos(0, row));
+        root.add(nominalField, gridPos(1, row++));
+        root.add(new JLabel("Lifetime:"), gridPos(0, row));
+        root.add(lifetimeField, gridPos(1, row++));
+        root.add(new JLabel("Restock:"), gridPos(0, row));
+        root.add(restockField, gridPos(1, row++));
+        root.add(new JLabel("QuantMin:"), gridPos(0, row));
+        root.add(quantMinField, gridPos(1, row++));
+        root.add(new JLabel("QuantMax:"), gridPos(0, row));
+        root.add(quantMaxField, gridPos(1, row++));
+        root.add(new JLabel("Cost:"), gridPos(0, row));
+        root.add(costField, gridPos(1, row++));
+
+        JPanel flagsPanel = new JPanel(new GridLayout(0, 2, 5, 5));
+        JCheckBox countInCargo = new JCheckBox("count_in_cargo");
+        JCheckBox countInHoarder = new JCheckBox("count_in_hoarder");
+        JCheckBox countInMap = new JCheckBox("count_in_map");
+        JCheckBox countInPlayer = new JCheckBox("count_in_player");
+        JCheckBox crafted = new JCheckBox("crafted");
+        JCheckBox deloot = new JCheckBox("deloot");
+
+        flagsPanel.add(countInCargo);
+        flagsPanel.add(countInHoarder);
+        flagsPanel.add(countInMap);
+        flagsPanel.add(countInPlayer);
+        flagsPanel.add(crafted);
+        flagsPanel.add(deloot);
+
+        gbc.gridwidth = 2;
+        root.add(new JLabel("Flags:"), gridPos(0, row++));
+        root.add(flagsPanel, gridPos(0, row++));
+        gbc.gridwidth = 1;
+
+        JComboBox<String> categoryBox = new JComboBox<>(categoryOptions.toArray(new String[0]));
         categoryBox.setEditable(true);
-        root.addRow(rowIndex[0]++, new Label("Category:"), categoryBox);
+        root.add(new JLabel("Category:"), gridPos(0, row));
+        root.add(categoryBox, gridPos(1, row++));
 
-        List<ComboBox<String>> usageFields = new ArrayList<>();
-        VBox usageBox = new VBox(5);
-        Button addUsageBtn = new Button("Add Usage");
-        addUsageBtn.setOnAction(e -> {
-            ComboBox<String> combo = new ComboBox<>();
-            combo.getItems().addAll(usageDropdown.getItems());
-            combo.setEditable(true);
-            usageFields.add(combo);
-            usageBox.getChildren().add(combo);
-        });
-        root.add(new Label("Usages:"), 0, rowIndex[0]);
-        root.add(new VBox(5, usageBox, addUsageBtn), 1, rowIndex[0]++);
+        JPanel usageBox = new JPanel();
+        usageBox.setLayout(new BoxLayout(usageBox, BoxLayout.Y_AXIS));
+        List<JComboBox<String>> usageFields = new ArrayList<>();
 
-        List<ComboBox<String>> valueFields = new ArrayList<>();
-        VBox valueBox = new VBox(5);
-        Button addValueBtn = new Button("Add Value");
-        addValueBtn.setOnAction(e -> {
-            ComboBox<String> combo = new ComboBox<>();
-            combo.getItems().addAll(valueDropdown.getItems());
-            combo.setEditable(true);
-            valueFields.add(combo);
-            valueBox.getChildren().add(combo);
-        });
-        root.add(new Label("Values:"), 0, rowIndex[0]);
-        root.add(new VBox(5, valueBox, addValueBtn), 1, rowIndex[0]++);
+        JButton addUsageBtn = new JButton("Add Usage");
+        actionListener(root, usageBox, usageFields, addUsageBtn, usageOptions);
 
-        Button saveBtn = new Button("Save");
-        saveBtn.setStyle("-fx-background-color: green; -fx-text-fill: white;");
-        saveBtn.setOnAction(e -> {
+        root.add(new JLabel("Usages:"), gridPos(0, row));
+        JPanel usagePanel = new JPanel(new BorderLayout());
+        usagePanel.add(new JScrollPane(usageBox), BorderLayout.CENTER);
+        usagePanel.add(addUsageBtn, BorderLayout.SOUTH);
+        root.add(usagePanel, gridPos(1, row++));
+
+        JPanel valueBox = new JPanel();
+        valueBox.setLayout(new BoxLayout(valueBox, BoxLayout.Y_AXIS));
+        List<JComboBox<String>> valueFields = new ArrayList<>();
+        JButton addValueBtn = new JButton("Add Value");
+        actionListener(root, valueBox, valueFields, addValueBtn, valueOptions);
+
+        root.add(new JLabel("Values:"), gridPos(0, row));
+        JPanel valuePanel = new JPanel(new BorderLayout());
+        valuePanel.add(new JScrollPane(valueBox), BorderLayout.CENTER);
+        valuePanel.add(addValueBtn, BorderLayout.SOUTH);
+        root.add(valuePanel, gridPos(1, row++));
+
+        JButton saveBtn = new JButton("Save");
+        saveBtn.setBackground(Color.GREEN);
+        saveBtn.setForeground(Color.WHITE);
+
+        saveBtn.addActionListener(e -> {
             String typeName = nameField.getText().trim();
-            if (typeName.isEmpty()) return;
+            if (typeName.isEmpty()) {
+                JOptionPane.showMessageDialog(dialog, "Type name cannot be empty!", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
 
             Document doc = xmlManager.getXmlDocument();
             Element newType = doc.createElement("type");
@@ -163,6 +448,7 @@ public class WindowManager {
             addElementWithText(doc, newType, "quantmin", quantMinField.getText().trim());
             addElementWithText(doc, newType, "quantmax", quantMaxField.getText().trim());
             addElementWithText(doc, newType, "cost", costField.getText().trim());
+
             Element flagsEl = doc.createElement("flags");
             flagsEl.setAttribute("count_in_cargo", countInCargo.isSelected() ? "1" : "0");
             flagsEl.setAttribute("count_in_hoarder", countInHoarder.isSelected() ? "1" : "0");
@@ -171,15 +457,16 @@ public class WindowManager {
             flagsEl.setAttribute("crafted", crafted.isSelected() ? "1" : "0");
             flagsEl.setAttribute("deloot", deloot.isSelected() ? "1" : "0");
             newType.appendChild(flagsEl);
-            String category = categoryBox.getEditor().getText().trim();
+
+            String category = ((String) categoryBox.getEditor().getItem()).trim();
             if (!category.isEmpty()) {
                 Element catEl = doc.createElement("category");
                 catEl.setAttribute("name", category);
                 newType.appendChild(catEl);
             }
 
-            for (ComboBox<String> usageField : usageFields) {
-                String usage = usageField.getEditor().getText().trim();
+            for (JComboBox<String> combo : usageFields) {
+                String usage = ((String) combo.getEditor().getItem()).trim();
                 if (!usage.isEmpty()) {
                     Element usageEl = doc.createElement("usage");
                     usageEl.setAttribute("name", usage);
@@ -187,8 +474,8 @@ public class WindowManager {
                 }
             }
 
-            for (ComboBox<String> valueField : valueFields) {
-                String value = valueField.getEditor().getText().trim();
+            for (JComboBox<String> combo : valueFields) {
+                String value = ((String) combo.getEditor().getItem()).trim();
                 if (!value.isEmpty()) {
                     Element valEl = doc.createElement("value");
                     valEl.setAttribute("name", value);
@@ -202,15 +489,40 @@ public class WindowManager {
             xmlManager.saveToXmlFile();
             xmlManager.refreshTypeElements();
 
-            masterData.add(typeName);
-            newTypeStage.close();
+            listModel.addElement(typeName);
+
+            dialog.dispose();
         });
 
-        root.add(saveBtn, 0, rowIndex[0]++, 2, 1);
-        saveBtn.setMaxWidth(Double.MAX_VALUE);
+        gbc.gridwidth = 2;
+        root.add(saveBtn, gridPos(0, row++));
 
-        newTypeStage.setScene(new Scene(scrollPane, 400, 600));
-        newTypeStage.show();
+        dialog.setContentPane(new JScrollPane(root));
+        dialog.setVisible(true);
+    }
+
+    private void actionListener(JPanel root, JPanel usageBox, List<JComboBox<String>> usageFields, JButton addUsageBtn, List<String> usageOptions) {
+        addUsageBtn.addActionListener(e -> {
+            JComboBox<String> combo = new JComboBox<>(usageOptions.toArray(new String[0]));
+            combo.setEditable(true);
+            usageFields.add(combo);
+            usageBox.add(combo);
+            usageBox.revalidate();
+            usageBox.repaint();
+
+            root.revalidate();
+            root.repaint();
+        });
+    }
+
+    private GridBagConstraints gridPos(int x, int y) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = x;
+        gbc.gridy = y;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(5, 5, 5, 5);
+        return gbc;
     }
 
     private void addElementWithText(Document doc, Element parent, String tagName, String textContent) {
@@ -220,190 +532,4 @@ public class WindowManager {
             parent.appendChild(el);
         }
     }
-
-    private void populateEditorFields(GridPane editRoot, Element selectedElement, Stage editStage) {
-        editRoot.getChildren().clear();
-        elementTextFields.clear();
-        attributeTextFields.clear();
-        int[] rowIndex = {0};
-
-        elementStream(selectedElement.getChildNodes()).forEach(element -> {
-            String key = element.getTagName();
-
-            switch (key) {
-                case "usage", "value" -> renderRemovableElement(editRoot, selectedElement, editStage, element, key, rowIndex);
-                case "category" -> renderCategoryField(editRoot, selectedElement, editStage, element, rowIndex);
-                default -> renderElementWithAttributesOrText(editRoot, element, key, rowIndex);
-            }
-        });
-
-
-        renderUsageAdditionUI(editRoot, selectedElement, editStage, rowIndex);
-        renderValueAdditionUI(editRoot, selectedElement, editStage, rowIndex);
-        renderSaveAndCloseButtons(editRoot, selectedElement, editStage, rowIndex);
-    }
-
-    private void renderRemovableElement(GridPane grid, Element parent, Stage stage, Element child, String key, int[] rowIndex) {
-        String name = child.getAttribute("name");
-        Label label = new Label(key + ": " + name);
-        Button deleteBtn = new Button("Delete");
-        deleteBtn.setStyle("-fx-background-color: red; -fx-text-fill: white;");
-        deleteBtn.setOnAction(e -> {
-            parent.removeChild(child);
-            xmlManager.saveToXmlFile();
-            xmlManager.refreshTypeElements();
-            populateEditorFields(grid, parent, stage);
-        });
-
-        HBox box = new HBox(10, label, deleteBtn);
-        box.setAlignment(Pos.CENTER_LEFT);
-        grid.add(box, 0, rowIndex[0]++, 2, 1);
-    }
-    private void renderCategoryField(GridPane grid, Element parent, Stage stage, Element categoryElement, int[] rowIndex) {
-        if (!categoryElement.hasAttribute("name")) return;
-
-        String categoryName = categoryElement.getAttribute("name");
-        Label label = new Label("category: " + categoryName);
-        Button editBtn = new Button("Edit");
-        editBtn.setStyle("-fx-background-color: orange; -fx-text-fill: black;");
-        int currentRow = rowIndex[0];
-
-        editBtn.setOnAction(e -> {
-            ComboBox<String> combo = new ComboBox<>();
-            combo.getItems().addAll(categoryDropdown.getItems());
-            combo.setEditable(true);
-            combo.setValue(categoryName);
-
-            Button applyBtn = new Button("Apply");
-            applyBtn.setStyle("-fx-background-color: green; -fx-text-fill: white;");
-            applyBtn.setOnAction(ev -> {
-                String newName = combo.getEditor().getText().trim();
-                if (!newName.isEmpty()) {
-                    categoryElement.setAttribute("name", newName);
-                    xmlManager.saveToXmlFile();
-                    xmlManager.refreshTypeElements();
-                    populateEditorFields(grid, parent, stage);
-                }
-            });
-
-            HBox editBox = new HBox(10, new Label("Edit category:"), combo, applyBtn);
-            editBox.setAlignment(Pos.CENTER_LEFT);
-
-            grid.getChildren().removeIf(node -> {
-                Integer row = GridPane.getRowIndex(node);
-                return row != null && row == currentRow;
-            });
-
-            grid.add(editBox, 0, currentRow, 2, 1);
-        });
-
-        HBox box = new HBox(10, label, editBtn);
-        box.setAlignment(Pos.CENTER_LEFT);
-        grid.add(box, 0, rowIndex[0]++, 2, 1);
-    }
-
-    private void renderElementWithAttributesOrText(GridPane grid, Element element, String key, int[] rowIndex) {
-        if (element.hasAttributes()) {
-            NamedNodeMap attrs = element.getAttributes();
-            for (int j = 0; j < attrs.getLength(); j++) {
-                Node attr = attrs.item(j);
-                TextField field = new TextField(attr.getNodeValue());
-                attributeTextFields.put((Attr) attr, field);
-                grid.addRow(rowIndex[0]++, new Label(key + "@" + attr.getNodeName() + ":"), field);
-            }
-        } else {
-            TextField field = new TextField(element.getTextContent().trim());
-            elementTextFields.put(element, field);
-            grid.addRow(rowIndex[0]++, new Label(key + ":"), field);
-        }
-    }
-    private void renderUsageAdditionUI(GridPane grid, Element parent, Stage stage, int[] rowIndex) {
-        ComboBox<String> combo = new ComboBox<>();
-        combo.getItems().addAll(usageDropdown.getItems());
-        combo.setEditable(true);
-
-        Button addBtn = new Button("Add");
-        addBtn.setOnAction(e -> {
-            String name = combo.getEditor().getText().trim();
-            if (!name.isEmpty() && elementStream(parent.getElementsByTagName("usage"))
-                    .noneMatch(el -> el.getAttribute("name").equals(name))) {
-                Element newUsage = xmlManager.getXmlDocument().createElement("usage");
-                newUsage.setAttribute("name", name);
-                parent.appendChild(newUsage);
-                xmlManager.saveToXmlFile();
-                xmlManager.refreshTypeElements();
-                populateEditorFields(grid, parent, stage);
-            }
-        });
-
-
-        HBox box = new HBox(10, new Label("Add Usage:"), combo, addBtn);
-        box.setAlignment(Pos.CENTER_LEFT);
-        grid.add(box, 0, rowIndex[0]++, 2, 1);
-    }
-    private void renderValueAdditionUI(GridPane grid, Element parent, Stage stage, int[] rowIndex) {
-        ComboBox<String> combo = new ComboBox<>();
-        combo.getItems().addAll(valueDropdown.getItems());
-        combo.setEditable(true);
-
-        Button addBtn = new Button("Add");
-        addBtn.setOnAction(e -> {
-            String name = combo.getEditor().getText().trim();
-            if (!name.isEmpty() && elementStream(parent.getElementsByTagName("value"))
-                    .noneMatch(el -> el.getAttribute("name").equals(name))) {
-                Element newValue = xmlManager.getXmlDocument().createElement("value");
-                newValue.setAttribute("name", name);
-                parent.appendChild(newValue);
-                xmlManager.saveToXmlFile();
-                xmlManager.refreshTypeElements();
-                populateEditorFields(grid, parent, stage);
-            }
-        });
-
-
-        HBox box = new HBox(10, new Label("Add Value:"), combo, addBtn);
-        box.setAlignment(Pos.CENTER_LEFT);
-        grid.add(box, 0, rowIndex[0]++, 2, 1);
-    }
-    private void renderSaveAndCloseButtons(GridPane grid, Element parent, Stage stage, int[] rowIndex) {
-        Button closeButton = new Button("Close");
-        closeButton.setStyle("-fx-background-color: gray; -fx-text-fill: white;");
-
-        saveButton.setOnAction(e -> {
-            elementTextFields.forEach((element, field) -> {
-                String newText = field.getText().trim();
-                element.setTextContent(newText);
-            });
-
-            attributeTextFields.forEach((attr, field) -> {
-                String newVal = field.getText().trim();
-                attr.setValue(newVal);
-            });
-
-            xmlManager.saveToXmlFile();
-            xmlManager.refreshTypeElements();
-            Element fresh = xmlManager.getTypeElements().get(parent.getAttribute("name"));
-            populateEditorFields(grid, fresh != null ? fresh : parent, stage);
-        });
-
-        closeButton.setOnAction(e -> stage.close());
-
-        HBox buttonBox = new HBox(10, saveButton, closeButton);
-        buttonBox.setAlignment(Pos.CENTER_LEFT);
-
-        grid.add(buttonBox, 0, rowIndex[0]++, 2, 1);
-    }
-
-    private Stream<Node> stream(NodeList nodeList) {
-        return IntStream.range(0, nodeList.getLength())
-                .mapToObj(nodeList::item);
-    }
-
-    private Stream<Element> elementStream(NodeList nodeList) {
-        return stream(nodeList)
-                .filter(node -> node instanceof Element)
-                .map(node -> (Element) node);
-    }
-
 }
-
