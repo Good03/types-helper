@@ -34,13 +34,8 @@ public class FilesManager {
 
     private List<String> loadFile(String fileName, String defaultContent) throws IOException {
         List<String> items;
-        File directory = new File("data");
-        if (!directory.exists()) {
-            directory.mkdirs();
-        }
-        File file = new File("data\\" + fileName);
+        File file = new File(fileName);
         if (!file.exists()) {
-            file.createNewFile();
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
                 writer.write(defaultContent);
             }
